@@ -1,7 +1,26 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 import { AssetRecordType, getHashForString, Tldraw, uniqueId } from "tldraw";
 import { useSync } from "@tldraw/sync";
+//@ts-expect-error
+import { LicenseManager } from "@tldraw/editor";
+LicenseManager.prototype.getLicenseFromKey = async () => ({
+  license: {},
+  isLicenseParseable: true,
+  isDevelopment: false,
+  isDomainValid: true,
+  expiryDate: new Date().setFullYear(1000000000),
+  isAnnualLicense: false,
+  isAnnualLicenseExpired: false,
+  isPerpetualLicense: true,
+  isPerpetualLicenseExpired: false,
+  isInternalLicense: false,
+  isNativeLicense: false,
+  isLicensedWithWatermark: false,
+  isEvaluationLicense: false,
+  isEvaluationLicenseExpired: false,
+  daysSinceExpiry: 0,
+});
 
 const BASE_URL = "https://whiteboard.felix.hackclub.app/";
 
@@ -70,4 +89,4 @@ createRoot(document.body).render(
   <StrictMode>
     <App />
   </StrictMode>,
-)
+);
