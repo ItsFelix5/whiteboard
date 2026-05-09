@@ -38,53 +38,53 @@ server.register(async (server) => {
       socket.on("message", collect);
 
       const roomId = req.params.roomId;
-      const existing = rooms.get(roomId);
-      if (existing && !existing.isClosed()) return existing;
+      let room = rooms.get(roomId);
+      if (!room || room.isClosed()) {
+        const storage = new SQLiteSyncStorage({
+          sql: {
+            config: {
+              tablePrefix: "_" + roomId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_",
+            },
+            exec: (sql) => db.run(sql),
+            prepare<
+              TResult extends TLSqliteRow | void = void,
+              TParams extends TLSqliteInputValue[] = TLSqliteInputValue[],
+            >(sql: string): TLSyncSqliteStatement<TResult, TParams> {
+              const statement = db.query(sql);
+              return {
+                iterate: (...bindings: TParams) =>
+                  statement.iterate(...bindings) as IterableIterator<TResult>,
+                all: (...bindings: TParams) =>
+                  statement.all(...bindings) as TResult[],
+                run: (...bindings: TParams) => {
+                  statement.run(...bindings);
+                },
+              };
+            },
+            transaction: (callback) => {
+              db.run("BEGIN");
+              try {
+                const result = callback();
+                db.run("COMMIT");
+                return result;
+              } catch (error) {
+                db.run("ROLLBACK");
+                throw error;
+              }
+            },
+          },
+        });
 
-      const storage = new SQLiteSyncStorage({
-        sql: {
-          config: {
-            tablePrefix: "_" + roomId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_",
-          },
-          exec: (sql) => db.run(sql),
-          prepare<
-            TResult extends TLSqliteRow | void = void,
-            TParams extends TLSqliteInputValue[] = TLSqliteInputValue[],
-          >(sql: string): TLSyncSqliteStatement<TResult, TParams> {
-            const statement = db.query(sql);
-            return {
-              iterate: (...bindings: TParams) =>
-                statement.iterate(...bindings) as IterableIterator<TResult>,
-              all: (...bindings: TParams) =>
-                statement.all(...bindings) as TResult[],
-              run: (...bindings: TParams) => {
-                statement.run(...bindings);
-              },
-            };
-          },
-          transaction: (callback) => {
-            db.run("BEGIN");
-            try {
-              const result = callback();
-              db.run("COMMIT");
-              return result;
-            } catch (error) {
-              db.run("ROLLBACK");
-              throw error;
+        room = new TLSocketRoom({
+          storage,
+          onSessionRemoved(room, { numSessionsRemaining }) {
+            if (numSessionsRemaining === 0) {
+              room.close();
+              rooms.delete(roomId);
             }
           },
-        },
-      });
-
-      const room = new TLSocketRoom({
-        storage,
-        onSessionRemoved(room, { numSessionsRemaining }) {
-          if (numSessionsRemaining === 0) {
-            room.close();
-            rooms.delete(roomId);
-          }
-        },
-      });
+        });
+      }
 
       rooms.set(roomId, room);
       room.handleSocketConnect({ sessionId, socket });
@@ -126,10 +126,7 @@ server.register(async (server) => {
             },
           ],
         }),
-      })
-        .then((r) => r.json())
-        .then(console.log)
-        .catch(console.error);
+      }).catch(console.error);
       res.code(200).send();
     },
   );
