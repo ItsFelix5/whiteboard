@@ -144,7 +144,7 @@ server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
       ],
     }),
   });
-  res.code(200);
+  res.code(200).send();
 });
 
 const index = await Bun.file(join(import.meta.dirname, "dist/index.html")).text();

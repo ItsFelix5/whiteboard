@@ -19,7 +19,7 @@ export default defineConfig({
           js = file.code
           delete bundle[fileName]
         } else if (fileName.endsWith('.html')) html = file;
-        if(html) html.source = (html.source as string).replace(/ crossorigin src="([^"]*)">/g, '>'+js);
+        if(html) html.source = (html.source as string).replace(/ crossorigin src=".*?">/g, '>'+js);
       }
     }
   }
