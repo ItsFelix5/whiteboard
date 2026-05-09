@@ -3,7 +3,7 @@ import websocketPlugin from "@fastify/websocket";
 import compress from "@fastify/compress";
 import { Database } from "bun:sqlite";
 import { createWriteStream, mkdir } from "fs";
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import fastify from "fastify";
 import { join } from "path";
 import type { RawData } from "ws";
@@ -131,14 +131,16 @@ server.register(async (server) => {
     },
   );
 
-  server.addContentTypeParser("*", (_, __, done) => done(null));
+  server.addContentTypeParser("*", { parseAs: "buffer" }, (_, body, done) =>
+    done(null, body),
+  );
   server.put<{ Params: { id: string } }>(
     "/uploads/:id",
     {},
     async (req, res) => {
-      await pipeline(
-        req.raw,
-        createWriteStream(join("./.assets", req.params?.id)),
+      await writeFile(
+        join("./.assets", req.params?.id),
+        req.body as Uint8Array,
       );
       res.send({ ok: true });
     },
