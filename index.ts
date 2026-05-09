@@ -96,6 +96,44 @@ server.register(async (server) => {
     }
   });
 
+  server.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string" },
+    (req, body, done) => done(null, new URLSearchParams(body as string)),
+  );
+  server.post<{ Body: URLSearchParams }>(
+    "/command/whiteboard",
+    async (req, res) => {
+      const id = Math.random().toString(36).substring(2);
+      fetch("https://slack.com/api/chat.postMessage", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + process.env.SLACK_TOKEN,
+          "Content-Type": "application/json; charset=utf-8",
+        },
+        body: JSON.stringify({
+          channel: req.body.get("channel_id"),
+          text: "Whiteboard",
+          blocks: [
+            {
+              type: "video",
+              video_url: `https://whiteboard.felix.hackclub.app/${id}`,
+              title_url: `https://whiteboard.felix.hackclub.app/${id}`,
+              thumbnail_url:
+                "https://stylesatlife.com/wp-content/uploads/2022/05/brown-rat.jpg",
+              title: { type: "plain_text", text: "Whiteboard" },
+              alt_text: "Whiteboard",
+            },
+          ],
+        }),
+      })
+        .then((r) => r.json())
+        .then(console.log)
+        .catch(console.error);
+      res.code(200).send();
+    },
+  );
+
   server.addContentTypeParser("*", (_, __, done) => done(null));
   server.put<{ Params: { id: string } }>(
     "/uploads/:id",
@@ -128,34 +166,6 @@ server.register(async (server) => {
       favicon,
     });
   });
-});
-
-server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
-  const id = Math.random().toString(36).substring(2);
-  const params = new URLSearchParams(req.body);
-  fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + process.env.SLACK_TOKEN,
-      "Content-Type": "application/json; charset=utf-8",
-    },
-    body: JSON.stringify({
-      channel: params.get("channel_id"),
-      text: "Whiteboard",
-      blocks: [
-        {
-          type: "video",
-          video_url: `https://whiteboard.felix.hackclub.app/${id}`,
-          title_url: `https://whiteboard.felix.hackclub.app/${id}`,
-          thumbnail_url:
-            "https://stylesatlife.com/wp-content/uploads/2022/05/brown-rat.jpg",
-          title: { type: "plain_text", text: "Whiteboard" },
-          alt_text: "Whiteboard",
-        },
-      ],
-    }),
-  });
-  res.code(200).send();
 });
 
 const bundle = await Bun.file(
