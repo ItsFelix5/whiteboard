@@ -16,38 +16,8 @@ import {
   type TLSyncSqliteStatement,
 } from "@tldraw/sync-core";
 
-mkdir("./.assets", ()=>{});
+mkdir("./.assets", () => {});
 const db = new Database("./rooms.db");
-const storage = new SQLiteSyncStorage({
-  sql: {
-    exec: (sql) => db.run(sql),
-    prepare<
-      TResult extends TLSqliteRow | void = void,
-      TParams extends TLSqliteInputValue[] = TLSqliteInputValue[],
-    >(sql: string): TLSyncSqliteStatement<TResult, TParams> {
-      const statement = db.query(sql);
-      return {
-        iterate: (...bindings: TParams) =>
-          statement.iterate(...bindings) as IterableIterator<TResult>,
-        all: (...bindings: TParams) => statement.all(...bindings) as TResult[],
-        run: (...bindings: TParams) => {
-          statement.run(...bindings);
-        },
-      };
-    },
-    transaction: (callback) => {
-      db.run("BEGIN");
-      try {
-        const result = callback();
-        db.run("COMMIT");
-        return result;
-      } catch (error) {
-        db.run("ROLLBACK");
-        throw error;
-      }
-    },
-  },
-});
 const rooms = new Map<string, TLSocketRoom>();
 
 const server = fastify();
@@ -67,6 +37,39 @@ server.register(async (server) => {
     const roomId = req.params.roomId.replace(/[^a-zA-Z0-9_-]/g, "_");
     const existing = rooms.get(roomId);
     if (existing && !existing.isClosed()) return existing;
+
+    const storage = new SQLiteSyncStorage({
+      sql: {
+        config: { tablePrefix: roomId },
+        exec: (sql) => db.run(sql),
+        prepare<
+          TResult extends TLSqliteRow | void = void,
+          TParams extends TLSqliteInputValue[] = TLSqliteInputValue[],
+        >(sql: string): TLSyncSqliteStatement<TResult, TParams> {
+          const statement = db.query(sql);
+          return {
+            iterate: (...bindings: TParams) =>
+              statement.iterate(...bindings) as IterableIterator<TResult>,
+            all: (...bindings: TParams) =>
+              statement.all(...bindings) as TResult[],
+            run: (...bindings: TParams) => {
+              statement.run(...bindings);
+            },
+          };
+        },
+        transaction: (callback) => {
+          db.run("BEGIN");
+          try {
+            const result = callback();
+            db.run("COMMIT");
+            return result;
+          } catch (error) {
+            db.run("ROLLBACK");
+            throw error;
+          }
+        },
+      },
+    });
 
     const room = new TLSocketRoom({
       storage,
@@ -125,7 +128,7 @@ server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
   fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
-      Authorization: 'Bearer ' + process.env.SLACK_TOKEN,
+      Authorization: "Bearer " + process.env.SLACK_TOKEN,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -147,9 +150,17 @@ server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
   res.code(200).send();
 });
 
-const bundle = await Bun.file(join(import.meta.dirname, "dist/bundle.js")).text();
-const index = await Bun.file(join(import.meta.dirname, "dist/index.html")).text();
-server.get("/bundle.js", async (req, res) => res.header("Content-Type", "application/javascript").send(bundle));
-server.get("/:roomId", async (req, res) => res.header("content-type", "text/html").send(index));
+const bundle = await Bun.file(
+  join(import.meta.dirname, "dist/bundle.js"),
+).text();
+const index = await Bun.file(
+  join(import.meta.dirname, "dist/index.html"),
+).text();
+server.get("/bundle.js", async (req, res) =>
+  res.header("Content-Type", "application/javascript").send(bundle),
+);
+server.get("/:roomId", async (req, res) =>
+  res.header("content-type", "text/html").send(index),
+);
 
 await server.listen({ port: 5858, host: "0.0.0.0" });
