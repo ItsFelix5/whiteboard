@@ -35,13 +35,16 @@ server.register(async (server) => {
     const collect = (message: RawData) => caught.push(message);
     socket.on("message", collect);
 
-    const roomId = req.params.roomId.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const roomId = req.params.roomId;
     const existing = rooms.get(roomId);
     if (existing && !existing.isClosed()) return existing;
 
     const storage = new SQLiteSyncStorage({
       sql: {
-        config: { tablePrefix: roomId },
+        config: {
+          tablePrefix:
+            "_" + roomId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_",
+        },
         exec: (sql) => db.run(sql),
         prepare<
           TResult extends TLSqliteRow | void = void,
@@ -127,7 +130,7 @@ server.register(async (server) => {
 });
 
 server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
-  const id = Math.random().toString(36);
+  const id = Math.random().toString(36).substring(2);
   const params = new URLSearchParams(req.body);
   fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
