@@ -28,6 +28,7 @@ server.register(async (server) => {
     Params: { roomId: string };
     Querystring: { sessionId?: string };
   }>("/connect/:roomId", { websocket: true }, async (socket, req) => {
+    try {
     const sessionId = req.query?.sessionId ?? crypto.randomUUID();
 
     const caught: RawData[] = [];
@@ -86,6 +87,9 @@ server.register(async (server) => {
 
     socket.off("message", collect);
     for (const message of caught) socket.emit("message", message);
+    } catch (error) {
+      console.error(error);
+    }
   });
 
   server.addContentTypeParser("*", (_, __, done) => done(null));
@@ -129,7 +133,7 @@ server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
     method: "POST",
     headers: {
       Authorization: "Bearer " + process.env.SLACK_TOKEN,
-      "Content-Type": "application/json",
+      "Content-Type": "application/json; charset=utf-8",
     },
     body: JSON.stringify({
       channel: params.get("channel_id"),
@@ -146,7 +150,7 @@ server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
         },
       ],
     }),
-  });
+  }).then(r=>r.json()).then(console.log).catch(console.warn);
   res.code(200).send();
 });
 
