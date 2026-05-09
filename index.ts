@@ -1,5 +1,6 @@
 import cors from "@fastify/cors";
 import websocketPlugin from "@fastify/websocket";
+import compress from "@fastify/compress";
 import { Database } from "bun:sqlite";
 import { createWriteStream, mkdir } from "fs";
 import { readFile } from "fs/promises";
@@ -21,6 +22,7 @@ const db = new Database("./rooms.db");
 const rooms = new Map<string, TLSocketRoom>();
 
 const server = fastify();
+server.register(compress);
 server.register(websocketPlugin);
 server.register(cors, { origin: "*" });
 server.register(async (server) => {
@@ -29,67 +31,66 @@ server.register(async (server) => {
     Querystring: { sessionId?: string };
   }>("/connect/:roomId", { websocket: true }, async (socket, req) => {
     try {
-    const sessionId = req.query?.sessionId ?? crypto.randomUUID();
+      const sessionId = req.query?.sessionId ?? crypto.randomUUID();
 
-    const caught: RawData[] = [];
-    const collect = (message: RawData) => caught.push(message);
-    socket.on("message", collect);
+      const caught: RawData[] = [];
+      const collect = (message: RawData) => caught.push(message);
+      socket.on("message", collect);
 
-    const roomId = req.params.roomId;
-    const existing = rooms.get(roomId);
-    if (existing && !existing.isClosed()) return existing;
+      const roomId = req.params.roomId;
+      const existing = rooms.get(roomId);
+      if (existing && !existing.isClosed()) return existing;
 
-    const storage = new SQLiteSyncStorage({
-      sql: {
-        config: {
-          tablePrefix:
-            "_" + roomId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_",
+      const storage = new SQLiteSyncStorage({
+        sql: {
+          config: {
+            tablePrefix: "_" + roomId.replace(/[^a-zA-Z0-9_-]/g, "_") + "_",
+          },
+          exec: (sql) => db.run(sql),
+          prepare<
+            TResult extends TLSqliteRow | void = void,
+            TParams extends TLSqliteInputValue[] = TLSqliteInputValue[],
+          >(sql: string): TLSyncSqliteStatement<TResult, TParams> {
+            const statement = db.query(sql);
+            return {
+              iterate: (...bindings: TParams) =>
+                statement.iterate(...bindings) as IterableIterator<TResult>,
+              all: (...bindings: TParams) =>
+                statement.all(...bindings) as TResult[],
+              run: (...bindings: TParams) => {
+                statement.run(...bindings);
+              },
+            };
+          },
+          transaction: (callback) => {
+            db.run("BEGIN");
+            try {
+              const result = callback();
+              db.run("COMMIT");
+              return result;
+            } catch (error) {
+              db.run("ROLLBACK");
+              throw error;
+            }
+          },
         },
-        exec: (sql) => db.run(sql),
-        prepare<
-          TResult extends TLSqliteRow | void = void,
-          TParams extends TLSqliteInputValue[] = TLSqliteInputValue[],
-        >(sql: string): TLSyncSqliteStatement<TResult, TParams> {
-          const statement = db.query(sql);
-          return {
-            iterate: (...bindings: TParams) =>
-              statement.iterate(...bindings) as IterableIterator<TResult>,
-            all: (...bindings: TParams) =>
-              statement.all(...bindings) as TResult[],
-            run: (...bindings: TParams) => {
-              statement.run(...bindings);
-            },
-          };
-        },
-        transaction: (callback) => {
-          db.run("BEGIN");
-          try {
-            const result = callback();
-            db.run("COMMIT");
-            return result;
-          } catch (error) {
-            db.run("ROLLBACK");
-            throw error;
+      });
+
+      const room = new TLSocketRoom({
+        storage,
+        onSessionRemoved(room, { numSessionsRemaining }) {
+          if (numSessionsRemaining === 0) {
+            room.close();
+            rooms.delete(roomId);
           }
         },
-      },
-    });
+      });
 
-    const room = new TLSocketRoom({
-      storage,
-      onSessionRemoved(room, { numSessionsRemaining }) {
-        if (numSessionsRemaining === 0) {
-          room.close();
-          rooms.delete(roomId);
-        }
-      },
-    });
+      rooms.set(roomId, room);
+      room.handleSocketConnect({ sessionId, socket });
 
-    rooms.set(roomId, room);
-    room.handleSocketConnect({ sessionId, socket });
-
-    socket.off("message", collect);
-    for (const message of caught) socket.emit("message", message);
+      socket.off("message", collect);
+      for (const message of caught) socket.emit("message", message);
     } catch (error) {
       console.error(error);
     }
@@ -153,7 +154,7 @@ server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
         },
       ],
     }),
-  }).then(r=>r.json()).then(console.log).catch(console.warn);
+  });
   res.code(200).send();
 });
 
