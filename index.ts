@@ -147,10 +147,9 @@ server.post<{ Body: string }>("/command/whiteboard", async (req, res) => {
   res.code(200).send();
 });
 
+const bundle = await Bun.file(join(import.meta.dirname, "dist/bundle.js")).text();
 const index = await Bun.file(join(import.meta.dirname, "dist/index.html")).text();
-server.get("/:roomId", async (req, res) => {
-  res.header("content-type", "text/html");
-  res.send(index);
-});
+server.get("/bundle.js", async (req, res) => res.header("Content-Type", "application/javascript").send(bundle));
+server.get("/:roomId", async (req, res) => res.header("content-type", "text/html").send(index));
 
 await server.listen({ port: 5858, host: "0.0.0.0" });
