@@ -150,7 +150,7 @@ server.register(async (server) => {
     const data = await readFile(join("./.assets", req.params?.id));
     res.header("Content-Security-Policy", "default-src 'none'");
     res.header("X-Content-Type-Options", "nosniff");
-    res.send(data);
+    res.send(data.buffer);
   });
 
   server.get<{ Querystring: { url: string } }>("/unfurl", async (req, res) => {
